@@ -1,0 +1,26 @@
+{
+  "name": "ems-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "dev:reset": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$portPid=(Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue).OwningProcess; if($portPid){Stop-Process -Id $portPid -Force}; npm run dev\"",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.19.2",
+    "express-validator": "^7.2.1",
+    "http-status-codes": "^2.3.0",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.19.0",
+    "sequelize": "^6.37.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  }
+}
