@@ -68,6 +68,11 @@ if (!dbName) throw new Error("Missing DB name (set DB_NAME or DATABASE_URL)");
 if (!process.env.JWT_SECRET) {
   throw new Error("Missing required environment variable: JWT_SECRET");
 }
+if (nodeEnv === "production" && isLocalDbHost) {
+  throw new Error(
+    "Invalid production DB host: localhost. Set DATABASE_URL (or DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME) to your Railway database.",
+  );
+}
 
 // Export environment variables in a clean object
 export const env = {
