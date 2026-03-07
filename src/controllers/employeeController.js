@@ -146,6 +146,134 @@ export const getEmployees = asyncHandler(async (req, res) => {
   }
 });
 
+export const createEmployee = asyncHandler(async (req, res, next) => {
+  const payload = req.body;
+  let transaction;
+
+  try {
+    transaction = await sequelize.transaction();
+
+    const department = await Department.findByPk(payload.departmentId, {
+      transaction,
+    });
+
+    if (!department) {
+      throw new ApiError(StatusCodes.BAD_REQUEST, "Department not found.");
+    }
+
+    const created = await Employee.create(payload, { transaction });
+    await transaction.commit();
+
+    const employee = await Employee.findByPk(created.id, {
+      include: [{ model: Department, as: "department", attributes: ["id", "name"] }],
+    });
+
+    return res.status(StatusCodes.CREATED).json({
+      success: true,
+      data: employee,
+    });
+  } catch (err) {
+    if (transaction) {
+      await transaction.rollback();
+    }
+
+    // Fallback for ems_db schema where employees use numeric id and camelCase columns.
+    const [existing] = await sequelize.query(
+      "SELECT id FROM employees WHERE email = :email LIMIT 1",
+      { replacements: { email: payload.email } },
+    );
+
+    if (existing.length > 0) {
+      return next(new ApiError(StatusCodes.CONFLICT, "Email is already in use."));
+    }
+
+    const [[dep]] = await sequelize.query(
+      "SELECT id, name FROM departments WHERE id = :id LIMIT 1",
+      { replacements: { id: payload.departmentId } },
+    );
+    if (!dep) {
+      return next(new ApiError(StatusCodes.BAD_REQUEST, "Department not found."));
+    }
+
+    const fullName = `${payload.firstName} ${payload.lastName}`.trim();
+    const statusMap = {
+      Active: "active",
+      "On-Leave": "on-leave",
+      Terminated: "terminated",
+    };
+    const fallbackStatus = statusMap[payload.status] || payload.status || "active";
+
+    const [insertResult] = await sequelize.query(
+      `
+        INSERT INTO employees
+          (name, email, phone, departmentId, designation, salary, status, joiningDate, createdAt, updatedAt)
+        VALUES
+          (:name, :email, :phone, :departmentId, :designation, :salary, :status, :joiningDate, NOW(), NOW())
+      `,
+      {
+        replacements: {
+          name: fullName,
+          email: payload.email,
+          phone: payload.phone,
+          departmentId: payload.departmentId,
+          designation: payload.designation,
+          salary: Number(payload.salary),
+          status: fallbackStatus,
+          joiningDate: payload.joiningDate,
+        },
+      },
+    );
+
+    const newId = insertResult?.insertId;
+    const [[row]] = await sequelize.query(
+      `
+        SELECT
+          e.id,
+          e.name,
+          e.email,
+          e.phone,
+          e.departmentId,
+          e.designation,
+          e.salary,
+          e.status,
+          e.joiningDate,
+          e.createdAt,
+          e.updatedAt,
+          d.id AS department_id,
+          d.name AS department_name
+        FROM employees e
+        LEFT JOIN departments d ON d.id = e.departmentId
+        WHERE e.id = :id
+        LIMIT 1
+      `,
+      { replacements: { id: newId } },
+    );
+
+    const parts = String(row?.name || "").trim().split(/\s+/).filter(Boolean);
+
+    return res.status(StatusCodes.CREATED).json({
+      success: true,
+      data: {
+        id: row.id,
+        firstName: parts[0] || "",
+        lastName: parts.length > 1 ? parts.slice(1).join(" ") : "",
+        email: row.email,
+        phone: row.phone,
+        departmentId: row.departmentId,
+        designation: row.designation,
+        salary: row.salary,
+        status: row.status,
+        joiningDate: row.joiningDate,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        department: row.department_id
+          ? { id: row.department_id, name: row.department_name }
+          : null,
+      },
+    });
+  }
+});
+
 export const updateEmployee = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const payload = req.body;

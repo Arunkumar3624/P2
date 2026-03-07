@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import sequelize from "../config/database.js";
 
 class User extends Model {
+  // Method to compare hashed password
   async comparePassword(plainPassword) {
     return bcrypt.compare(plainPassword, this.password);
   }
@@ -38,9 +39,11 @@ User.init(
     underscored: true,
     timestamps: false,
     hooks: {
+      // Hash password before creating
       async beforeCreate(user) {
         user.password = await bcrypt.hash(user.password, 12);
       },
+      // Hash password before updating if changed
       async beforeUpdate(user) {
         if (user.changed("password")) {
           user.password = await bcrypt.hash(user.password, 12);

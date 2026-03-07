@@ -14,16 +14,19 @@ const app = express();
 app.use(
   cors({
     origin: env.clientOrigin,
-    credentials: true
-  })
+    credentials: true,
+  }),
 );
+
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
 app.get("/api/v1/health", (req, res) => {
+  const dbConnected = Boolean(req.app.locals.dbConnected);
   res.status(StatusCodes.OK).json({
     success: true,
-    message: "EMS API is healthy."
+    message: "EMS API is healthy.",
+    dbConnected,
   });
 });
 
@@ -35,7 +38,7 @@ app.use("/api/v1/departments", departmentRoutes);
 app.use((req, res) => {
   res.status(StatusCodes.NOT_FOUND).json({
     success: false,
-    message: "Route not found."
+    message: "Route not found.",
   });
 });
 

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  createEmployee,
   deleteEmployee,
   getEmployees,
   updateEmployee,
@@ -9,6 +10,7 @@ import validate from "../middleware/validateMiddleware.js";
 import {
   employeeIdParamValidator,
   employeeQueryValidator,
+  createEmployeeValidator,
   updateEmployeeValidator,
 } from "../validators/employeeValidator.js";
 
@@ -17,6 +19,13 @@ const router = Router();
 router.get("/", employeeQueryValidator, validate, getEmployees);
 
 router.use(protect);
+router.post(
+  "/",
+  authorize("Admin", "admin"),
+  createEmployeeValidator,
+  validate,
+  createEmployee,
+);
 router.put(
   "/:id",
   authorize("Admin", "admin"),

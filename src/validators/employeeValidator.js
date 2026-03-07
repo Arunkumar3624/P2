@@ -57,6 +57,23 @@ export const updateEmployeeValidator = [
     .withMessage("Invalid joiningDate."),
 ];
 
+export const createEmployeeValidator = [
+  body("firstName").isString().trim().notEmpty(),
+  body("lastName").isString().trim().notEmpty(),
+  body("email").isEmail().withMessage("Invalid email."),
+  body("phone").isString().trim().notEmpty(),
+  body("departmentId").custom(uuidOrInt).withMessage("Invalid departmentId."),
+  body("designation").isString().trim().notEmpty(),
+  body("salary")
+    .isFloat({ gt: 0 })
+    .withMessage("Salary must be positive."),
+  body("status")
+    .optional()
+    .isIn(["Active", "On-Leave", "Terminated"])
+    .withMessage("Invalid status."),
+  body("joiningDate").isISO8601().withMessage("Invalid joiningDate."),
+];
+
 export const employeeIdParamValidator = [
   param("id")
     .custom(uuidOrInt)

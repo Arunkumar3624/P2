@@ -63,7 +63,7 @@ export const login = asyncHandler(async (req, res, next) => {
 export const me = asyncHandler(async (req, res) => {
   res.status(StatusCodes.OK).json({
     success: true,
-    data: { user: req.user },
+    data: { user: req.user || null },
   });
 });
 

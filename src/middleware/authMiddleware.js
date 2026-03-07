@@ -26,6 +26,27 @@ export const protect = async (req, res, next) => {
   }
 };
 
+export const optionalAuth = async (req, res, next) => {
+  const token = req.cookies?.[env.cookieName];
+
+  if (!token) {
+    req.user = null;
+    return next();
+  }
+
+  try {
+    const decoded = verifyToken(token);
+    const user = await User.findByPk(decoded.id, {
+      attributes: ["id", "email", "role"]
+    });
+    req.user = user || null;
+    next();
+  } catch {
+    req.user = null;
+    next();
+  }
+};
+
 export const authorize = (...roles) => (req, res, next) => {
   if (!roles.includes(req.user.role)) {
     return next(new ApiError(StatusCodes.FORBIDDEN, "Insufficient permission."));
