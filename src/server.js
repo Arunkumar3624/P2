@@ -7,16 +7,11 @@ dotenv.config();
 
 const start = async () => {
   try {
-    // Try connecting to database
-    try {
-      await sequelize.authenticate();
-      console.log("Database connected successfully");
+    await sequelize.authenticate();
+    console.log("Database connected successfully");
 
-      await sequelize.sync();
-      console.log("Database synced");
-    } catch (dbError) {
-      console.error("Database connection failed:", dbError.message);
-    }
+    await sequelize.sync();
+    console.log("Database synced");
 
     // Start server
     const PORT = env.port || process.env.PORT || 5000;
@@ -38,7 +33,11 @@ const start = async () => {
       process.exit(1);
     });
   } catch (error) {
-    console.error("Failed to start server:", error.message);
+    console.error("Failed to start server:", error?.message || error);
+    if (error?.stack) {
+      console.error(error.stack);
+    }
+    process.exit(1);
   }
 };
 

@@ -149,10 +149,8 @@ export const getEmployees = asyncHandler(async (req, res) => {
 export const updateEmployee = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const payload = req.body;
-
-  const transaction = await sequelize.transaction();
-
   try {
+    const transaction = await sequelize.transaction();
     const employee = await Employee.findByPk(id, { transaction });
     if (!employee) {
       throw new ApiError(StatusCodes.NOT_FOUND, "Employee not found.");
@@ -180,20 +178,171 @@ export const updateEmployee = asyncHandler(async (req, res, next) => {
       success: true,
       data: refreshed,
     });
-  } catch (error) {
-    await transaction.rollback();
-    return next(error);
+  } catch {
+    // Fallback for ems_db schema where employees use numeric id and camelCase columns.
+    const idNum = Number(id);
+    if (!Number.isInteger(idNum) || idNum <= 0) {
+      return next(
+        new ApiError(StatusCodes.BAD_REQUEST, "Invalid employee id."),
+      );
+    }
+
+    const [[existing]] = await sequelize.query(
+      "SELECT id, name, departmentId FROM employees WHERE id = :id LIMIT 1",
+      { replacements: { id: idNum } },
+    );
+
+    if (!existing) {
+      return next(new ApiError(StatusCodes.NOT_FOUND, "Employee not found."));
+    }
+
+    if (payload.departmentId) {
+      const depIdNum = Number(payload.departmentId);
+      const [[dep]] = await sequelize.query(
+        "SELECT id FROM departments WHERE id = :id LIMIT 1",
+        { replacements: { id: depIdNum } },
+      );
+      if (!dep) {
+        return next(
+          new ApiError(StatusCodes.BAD_REQUEST, "Department not found."),
+        );
+      }
+    }
+
+    const fullName = (existing.name || "").trim();
+    const nameParts = fullName.split(/\s+/).filter(Boolean);
+    const currentFirst = nameParts[0] || "";
+    const currentLast =
+      nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+    const nextFirst = payload.firstName ?? currentFirst;
+    const nextLast = payload.lastName ?? currentLast;
+
+    const updates = [];
+    const replacements = { id: idNum };
+
+    if (payload.firstName !== undefined || payload.lastName !== undefined) {
+      updates.push("name = :name");
+      replacements.name = `${nextFirst} ${nextLast}`.trim();
+    }
+    if (payload.email !== undefined) {
+      updates.push("email = :email");
+      replacements.email = payload.email;
+    }
+    if (payload.phone !== undefined) {
+      updates.push("phone = :phone");
+      replacements.phone = payload.phone;
+    }
+    if (payload.departmentId !== undefined) {
+      updates.push("departmentId = :departmentId");
+      replacements.departmentId = Number(payload.departmentId);
+    }
+    if (payload.designation !== undefined) {
+      updates.push("designation = :designation");
+      replacements.designation = payload.designation;
+    }
+    if (payload.salary !== undefined) {
+      updates.push("salary = :salary");
+      replacements.salary = Number(payload.salary);
+    }
+    if (payload.status !== undefined) {
+      updates.push("status = :status");
+      replacements.status = payload.status;
+    }
+    if (payload.joiningDate !== undefined) {
+      updates.push("joiningDate = :joiningDate");
+      replacements.joiningDate = payload.joiningDate;
+    }
+
+    if (updates.length > 0) {
+      updates.push("updatedAt = NOW()");
+      await sequelize.query(
+        `UPDATE employees SET ${updates.join(", ")} WHERE id = :id`,
+        { replacements },
+      );
+    }
+
+    const [[row]] = await sequelize.query(
+      `
+        SELECT
+          e.id,
+          e.name,
+          e.email,
+          e.phone,
+          e.departmentId,
+          e.designation,
+          e.salary,
+          e.status,
+          e.joiningDate,
+          e.createdAt,
+          e.updatedAt,
+          d.id AS department_id,
+          d.name AS department_name
+        FROM employees e
+        LEFT JOIN departments d ON d.id = e.departmentId
+        WHERE e.id = :id
+        LIMIT 1
+      `,
+      { replacements: { id: idNum } },
+    );
+
+    const refreshedName = (row?.name || "").trim();
+    const refreshedParts = refreshedName.split(/\s+/).filter(Boolean);
+
+    return res.status(StatusCodes.OK).json({
+      success: true,
+      data: {
+        id: row.id,
+        firstName: refreshedParts[0] || "",
+        lastName:
+          refreshedParts.length > 1 ? refreshedParts.slice(1).join(" ") : "",
+        email: row.email,
+        phone: row.phone,
+        departmentId: row.departmentId,
+        designation: row.designation,
+        salary: row.salary,
+        status: row.status,
+        joiningDate: row.joiningDate,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        department: row.department_id
+          ? { id: row.department_id, name: row.department_name }
+          : null,
+      },
+    });
   }
 });
 
 export const deleteEmployee = asyncHandler(async (req, res, next) => {
-  const employee = await Employee.findByPk(req.params.id);
-  if (!employee) {
-    return next(new ApiError(StatusCodes.NOT_FOUND, "Employee not found."));
+  try {
+    const employee = await Employee.findByPk(req.params.id);
+    if (!employee) {
+      return next(new ApiError(StatusCodes.NOT_FOUND, "Employee not found."));
+    }
+    await employee.destroy();
+    return res.status(StatusCodes.OK).json({
+      success: true,
+      message: "Employee deleted.",
+    });
+  } catch {
+    const idNum = Number(req.params.id);
+    if (!Number.isInteger(idNum) || idNum <= 0) {
+      return next(
+        new ApiError(StatusCodes.BAD_REQUEST, "Invalid employee id."),
+      );
+    }
+
+    const [result] = await sequelize.query(
+      "DELETE FROM employees WHERE id = :id",
+      { replacements: { id: idNum } },
+    );
+
+    if (!result?.affectedRows) {
+      return next(new ApiError(StatusCodes.NOT_FOUND, "Employee not found."));
+    }
+
+    return res.status(StatusCodes.OK).json({
+      success: true,
+      message: "Employee deleted.",
+    });
   }
-  await employee.destroy();
-  res.status(StatusCodes.OK).json({
-    success: true,
-    message: "Employee deleted.",
-  });
 });
