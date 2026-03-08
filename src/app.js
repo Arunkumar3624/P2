@@ -20,12 +20,21 @@ const matchesOrigin = (origin, allowedOrigin) => {
   const pattern = `^${escapeRegex(allowedOrigin).replace(/\\\*/g, ".*")}$`;
   return new RegExp(pattern).test(origin);
 };
+const isTrustedHostedOrigin = (origin) => {
+  try {
+    const url = new URL(origin);
+    return url.protocol === "https:" && url.hostname.endsWith(".vercel.app");
+  } catch {
+    return false;
+  }
+};
 
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow non-browser clients and same-origin requests without Origin header.
     if (!origin) return callback(null, true);
     const normalizedOrigin = normalizeOrigin(origin);
+    if (isTrustedHostedOrigin(normalizedOrigin)) return callback(null, true);
     const isAllowed = env.clientOrigins.some((allowedOrigin) =>
       matchesOrigin(normalizedOrigin, allowedOrigin),
     );
