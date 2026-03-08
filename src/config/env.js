@@ -3,6 +3,11 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const clean = (value) => (typeof value === "string" ? value.trim() : value);
+const parseOrigins = (value = "") =>
+  String(value)
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
 const parseBoolean = (value, defaultValue = false) => {
   if (typeof value === "undefined") return defaultValue;
@@ -10,6 +15,10 @@ const parseBoolean = (value, defaultValue = false) => {
 };
 
 const nodeEnv = clean(process.env.NODE_ENV) || "development";
+const clientOrigins = parseOrigins(
+  process.env.CLIENT_ORIGIN ||
+    "https://arunkumar-pied.vercel.app,http://localhost:5173",
+);
 const mongodbUri =
   clean(process.env.MONGODB_URI) || clean(process.env.DATABASE_URL) || "";
 
@@ -28,8 +37,7 @@ if (!process.env.JWT_SECRET) {
 export const env = {
   port: Number(process.env.PORT || 5000),
   nodeEnv,
-  clientOrigin:
-    process.env.CLIENT_ORIGIN || "https://arunkumar-pied.vercel.app",
+  clientOrigins,
   mongodbUri,
   dbConnectRetryMs: Number(process.env.DB_CONNECT_RETRY_MS || 10000),
   exitOnDbFailure: parseBoolean(process.env.EXIT_ON_DB_FAILURE, false),
