@@ -7,8 +7,10 @@ export const registerValidator = [
     .withMessage("Password must be at least 8 characters long."),
   body("role")
     .optional()
-    .isIn(["Admin", "Manager", "admin", "hr", "employee"])
-    .withMessage("Role must be one of Admin, Manager, admin, hr, employee."),
+    .isIn(["Admin", "Manager", "admin", "manager", "hr", "employee", "user"])
+    .withMessage(
+      "Role must be one of Admin, Manager, admin, manager, hr, employee, user.",
+    ),
 ];
 
 export const loginValidator = [

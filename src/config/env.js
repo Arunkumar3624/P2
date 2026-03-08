@@ -1,4 +1,3 @@
-// config/env.js
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -26,7 +25,6 @@ if (!process.env.JWT_SECRET) {
   throw new Error("Missing required environment variable: JWT_SECRET");
 }
 
-// Export environment variables in a clean object
 export const env = {
   port: Number(process.env.PORT || 5000),
   nodeEnv,
@@ -42,5 +40,4 @@ export const env = {
   cookieName: process.env.COOKIE_NAME || "ems_token",
 };
 
-// Flag to quickly check if in production
 export const isProd = env.nodeEnv === "production";

@@ -21,21 +21,21 @@ router.get("/", employeeQueryValidator, validate, getEmployees);
 router.use(protect);
 router.post(
   "/",
-  authorize("Admin", "admin"),
+  authorize("Admin", "admin", "user", "hr", "Manager", "employee"),
   createEmployeeValidator,
   validate,
   createEmployee,
 );
 router.put(
   "/:id",
-  authorize("Admin", "admin"),
+  authorize("Admin", "admin", "user", "hr", "Manager", "employee"),
   updateEmployeeValidator,
   validate,
   updateEmployee,
 );
 router.delete(
   "/:id",
-  authorize("Admin", "admin"),
+  authorize("Admin", "admin", "user", "hr", "Manager", "employee"),
   employeeIdParamValidator,
   validate,
   deleteEmployee,

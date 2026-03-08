@@ -1,18 +1,20 @@
 import app from "./app.js";
-import {
-  connectDatabase as connectMongoDatabase,
-  disconnectDatabase as disconnectMongoDatabase,
-} from "./config/database.js";
 import { env } from "./config/env.js";
+import { connectDatabase, disconnectDatabase } from "./config/database.js";
 
 let dbConnected = false;
-const maskedMongoUri = env.mongodbUri.replace(/\/\/([^:]+):([^@]+)@/, "//$1:***@");
 
-const connectDatabase = async () => {
-  await connectMongoDatabase();
-  dbConnected = true;
-  app.locals.dbConnected = true;
-  console.log("Database connected successfully");
+const tryConnectDatabase = async () => {
+  try {
+    await connectDatabase();
+    dbConnected = true;
+    app.locals.dbConnected = true;
+  } catch (err) {
+    dbConnected = false;
+    app.locals.dbConnected = false;
+    console.error("Database connection failed:", err.message);
+    throw err;
+  }
 };
 
 const scheduleDbReconnect = () => {
@@ -23,66 +25,40 @@ const scheduleDbReconnect = () => {
 
     try {
       console.log("Retrying database connection...");
-      await connectDatabase();
-    } catch (error) {
-      console.error("Database reconnect failed:", error.message);
+      await tryConnectDatabase();
+    } catch (err) {
+      console.error("Database reconnect failed:", err.message);
       scheduleDbReconnect();
     }
   }, env.dbConnectRetryMs);
 };
 
 const startServer = async () => {
-  const port = env.port || 5000;
-
   try {
-    await connectDatabase();
-  } catch (error) {
-    dbConnected = false;
-    app.locals.dbConnected = false;
-
-    console.error("Initial DB connection failed:", error.message);
-    console.error(`Current DB target: ${maskedMongoUri}`);
-    console.error(
-      "DB reconnect will continue in background. Update .env credentials and restart.",
-    );
-
-    if (env.exitOnDbFailure) {
-      if (error?.stack) {
-        console.error(error.stack);
-      }
-      process.exit(1);
-    }
-  }
-
-  const server = app.listen(port, () =>
-    console.log(`Server running on port ${port} in ${env.nodeEnv} mode`),
-  );
-
-  server.on("error", (err) => {
-    if (err?.code === "EADDRINUSE") {
-      console.error(`Port ${port} is already in use.`);
-      process.exit(1);
-    }
-    console.error("Server error:", err.message);
-    process.exit(1);
-  });
-
-  process.on("unhandledRejection", (reason, promise) => {
-    console.error("Unhandled Rejection at:", promise, "reason:", reason);
-    server.close(() => process.exit(1));
-  });
-
-  if (!dbConnected && !env.exitOnDbFailure) {
+    await tryConnectDatabase();
+  } catch {
+    console.error("Initial DB connection failed, retrying in background...");
     scheduleDbReconnect();
   }
 
-  process.on("SIGTERM", async () => {
-    try {
-      await disconnectMongoDatabase();
-    } finally {
-      process.exit(1);
-    }
+  const server = app.listen(env.port, () => {
+    console.log(`Server running on port ${env.port}`);
   });
+
+  const gracefulShutdown = async () => {
+    server.close(async () => {
+      try {
+        await disconnectDatabase();
+      } catch (err) {
+        console.error("Error disconnecting MongoDB:", err.message);
+      } finally {
+        process.exit(0);
+      }
+    });
+  };
+
+  process.on("SIGTERM", gracefulShutdown);
+  process.on("SIGINT", gracefulShutdown);
 };
 
 startServer();

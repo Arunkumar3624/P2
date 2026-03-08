@@ -9,13 +9,14 @@ const cookieOptions = {
   httpOnly: true,
   secure: isProd,
   sameSite: isProd ? "none" : "lax",
-  maxAge: 24 * 60 * 60 * 1000,
 };
 
 export const register = asyncHandler(async (req, res, next) => {
   const { email, password, role = "employee" } = req.body;
-  const normalizedRole = role === "Manager" ? "employee" : role;
-  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedRole = String(role || "employee").trim();
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
 
   const existing = await User.findOne({ email: normalizedEmail });
   if (existing) {
@@ -44,21 +45,35 @@ export const register = asyncHandler(async (req, res, next) => {
 
 export const login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
-  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
 
   const user = await User.findOne({ email: normalizedEmail });
-  if (!user || !(await user.comparePassword(password))) {
-    return next(new ApiError(StatusCodes.UNAUTHORIZED, "Invalid credentials."));
+
+  if (!user) {
+    return res.status(401).json({ message: "Invalid credentials." });
   }
 
-  const token = signToken({ id: user.id, role: user.role });
+  const isMatch = await user.comparePassword(password);
+  if (!isMatch) {
+    return res.status(401).json({ message: "Invalid credentials." });
+  }
+
+  // Upgrade legacy plain-text passwords after successful login.
+  if (!user.hasHashedPassword()) {
+    user.password = password;
+    await user.save();
+  }
+
+  const token = signToken({ id: user._id, role: user.role });
   res.cookie(env.cookieName, token, cookieOptions);
 
-  res.status(StatusCodes.OK).json({
+  res.status(200).json({
     success: true,
     data: {
       user: {
-        id: user.id,
+        id: user._id,
         email: user.email,
         role: user.role,
       },
