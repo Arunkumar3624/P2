@@ -10,13 +10,17 @@ import departmentRoutes from "./routes/departmentRoutes.js";
 import errorMiddleware from "./middleware/errorMiddleware.js";
 
 const app = express();
+const normalizeOrigin = (value) => String(value || "").trim().replace(/\/+$/, "");
 
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow non-browser clients and same-origin requests without Origin header.
     if (!origin) return callback(null, true);
-    if (env.clientOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
+    const normalizedOrigin = normalizeOrigin(origin);
+    if (env.clientOrigins.includes(normalizedOrigin)) return callback(null, true);
+
+    // Do not raise 500 for blocked origins; simply deny CORS for this request.
+    return callback(null, false);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],

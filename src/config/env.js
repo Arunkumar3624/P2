@@ -3,10 +3,11 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const clean = (value) => (typeof value === "string" ? value.trim() : value);
+const normalizeOrigin = (value) => String(value || "").trim().replace(/\/+$/, "");
 const parseOrigins = (value = "") =>
   String(value)
     .split(",")
-    .map((origin) => origin.trim())
+    .map((origin) => normalizeOrigin(origin))
     .filter(Boolean);
 
 const parseBoolean = (value, defaultValue = false) => {
