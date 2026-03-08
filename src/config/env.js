@@ -79,8 +79,7 @@ export const env = {
   port: Number(process.env.PORT || 5000),
   nodeEnv,
   clientOrigin:
-    process.env.CLIENT_ORIGIN ||
-    "https://arunkumar-git-main-arunkumar3624s-projects.vercel.app",
+    process.env.CLIENT_ORIGIN || "https://arunkumar-pied.vercel.app",
   databaseUrl: candidateDatabaseUrl,
 
   // Database
