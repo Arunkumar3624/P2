@@ -57,8 +57,6 @@ const startServer = async () => {
       }
       process.exit(1);
     }
-
-    scheduleDbReconnect();
   }
 
   const server = app.listen(port, () =>
