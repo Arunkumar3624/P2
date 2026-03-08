@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-const bcryptHashPattern = /^\$2[aby]\$\d{2}\$.{53}$/;
+const bcryptHashPattern = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
 
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
