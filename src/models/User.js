@@ -1,56 +1,51 @@
-import { DataTypes, Model } from "sequelize";
+import mongoose from "mongoose";
 import bcrypt from "bcrypt";
-import sequelize from "../config/database.js";
 
-class User extends Model {
-  // Method to compare hashed password
-  async comparePassword(plainPassword) {
-    return bcrypt.compare(plainPassword, this.password);
-  }
-}
-
-User.init(
+const userSchema = new mongoose.Schema(
   {
-    id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
-      primaryKey: true,
-    },
     email: {
-      type: DataTypes.STRING,
-      allowNull: false,
+      type: String,
+      required: true,
       unique: true,
-      validate: { isEmail: true },
+      trim: true,
+      lowercase: true,
     },
     password: {
-      type: DataTypes.STRING,
-      allowNull: false,
+      type: String,
+      required: true,
     },
     role: {
-      type: DataTypes.ENUM("Admin", "Manager", "admin", "hr", "employee"),
-      allowNull: false,
-      defaultValue: "employee",
+      type: String,
+      enum: ["Admin", "Manager", "admin", "hr", "employee"],
+      default: "employee",
+      required: true,
     },
   },
-  {
-    sequelize,
-    modelName: "User",
-    tableName: "users",
-    underscored: true,
-    timestamps: false,
-    hooks: {
-      // Hash password before creating
-      async beforeCreate(user) {
-        user.password = await bcrypt.hash(user.password, 12);
-      },
-      // Hash password before updating if changed
-      async beforeUpdate(user) {
-        if (user.changed("password")) {
-          user.password = await bcrypt.hash(user.password, 12);
-        }
-      },
-    },
-  },
+  { timestamps: false },
 );
+
+userSchema.pre("save", async function hashPassword(next) {
+  if (!this.isModified("password")) return next();
+  this.password = await bcrypt.hash(this.password, 12);
+  next();
+});
+
+userSchema.methods.comparePassword = async function comparePassword(
+  plainPassword,
+) {
+  return bcrypt.compare(plainPassword, this.password);
+};
+
+userSchema.set("toJSON", {
+  virtuals: true,
+  transform: (_doc, ret) => {
+    ret.id = ret._id.toString();
+    delete ret._id;
+    delete ret.__v;
+    return ret;
+  },
+});
+
+const User = mongoose.model("User", userSchema);
 
 export default User;

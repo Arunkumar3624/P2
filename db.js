@@ -1,21 +1,22 @@
 // db.js
-const mysql = require("mysql2");
-require("dotenv").config();
+import dotenv from "dotenv";
+import mongoose from "mongoose";
 
-const db = mysql.createConnection({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
+dotenv.config();
 
-db.connect((err) => {
-  if (err) {
-    console.error("Database connection failed:", err);
-  } else {
-    console.log("✅ Connected to Railway DB!");
-  }
-});
+const dbUrl = process.env.MONGODB_URI || process.env.DATABASE_URL;
 
-module.exports = db;
+if (!dbUrl) {
+  throw new Error("Missing MONGODB_URI or DATABASE_URL.");
+}
+
+mongoose
+  .connect(dbUrl)
+  .then(() => {
+    console.log("Connected to MongoDB.");
+  })
+  .catch((error) => {
+    console.error("Database connection failed:", error.message);
+  });
+
+export default mongoose.connection;

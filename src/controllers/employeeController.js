@@ -1,476 +1,182 @@
-import { Op } from "sequelize";
 import { StatusCodes } from "http-status-codes";
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
-import { Department, Employee, sequelize } from "../models/index.js";
+import { Department, Employee } from "../models/index.js";
+
+const mapEmployee = (row) => {
+  const departmentObj =
+    row?.departmentId && typeof row.departmentId === "object"
+      ? row.departmentId
+      : null;
+
+  return {
+    id: String(row._id),
+    firstName: row.firstName,
+    lastName: row.lastName,
+    email: row.email,
+    phone: row.phone,
+    departmentId: departmentObj?._id
+      ? String(departmentObj._id)
+      : String(row.departmentId),
+    designation: row.designation,
+    salary: row.salary,
+    status: row.status,
+    joiningDate: row.joiningDate,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    department: departmentObj?._id
+      ? {
+          id: String(departmentObj._id),
+          name: departmentObj.name,
+        }
+      : null,
+  };
+};
 
 export const getEmployees = asyncHandler(async (req, res) => {
   const page = Number(req.query.page || 1);
   const limit = Number(req.query.limit || 10);
-  const offset = (page - 1) * limit;
+  const skip = (page - 1) * limit;
   const sortBy = req.query.sortBy || "createdAt";
-  const sortOrder = (req.query.sortOrder || "desc").toUpperCase();
+  const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
   const search = (req.query.search || "").trim();
 
-  const searchFilter = search
+  const sortMap = {
+    firstName: "firstName",
+    lastName: "lastName",
+    email: "email",
+    salary: "salary",
+    status: "status",
+    joiningDate: "joiningDate",
+    createdAt: "createdAt",
+  };
+  const resolvedSort = sortMap[sortBy] || "createdAt";
+
+  const query = search
     ? {
-        [Op.or]: [
-          { firstName: { [Op.like]: `%${search}%` } },
-          { lastName: { [Op.like]: `%${search}%` } },
-          { email: { [Op.like]: `%${search}%` } },
-          { designation: { [Op.like]: `%${search}%` } },
+        $or: [
+          { firstName: { $regex: search, $options: "i" } },
+          { lastName: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+          { designation: { $regex: search, $options: "i" } },
         ],
       }
     : {};
 
-  try {
-    const { rows, count } = await Employee.findAndCountAll({
-      where: searchFilter,
-      include: [
-        {
-          model: Department,
-          as: "department",
-          attributes: ["id", "name"],
-        },
-      ],
-      order: [[sortBy, sortOrder]],
+  const [rows, count] = await Promise.all([
+    Employee.find(query)
+      .populate("departmentId", "name")
+      .sort({ [resolvedSort]: sortOrder })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Employee.countDocuments(query),
+  ]);
+
+  return res.status(StatusCodes.OK).json({
+    success: true,
+    data: rows.map(mapEmployee),
+    meta: {
+      page,
       limit,
-      offset,
-    });
-
-    return res.status(StatusCodes.OK).json({
-      success: true,
-      data: rows,
-      meta: {
-        page,
-        limit,
-        total: count,
-        totalPages: Math.ceil(count / limit),
-      },
-    });
-  } catch {
-    // Fallback for ems_db schema where employees use camelCase columns.
-    const orderMap = {
-      firstName: "e.name",
-      lastName: "e.name",
-      email: "e.email",
-      salary: "e.salary",
-      status: "e.status",
-      joiningDate: "e.joiningDate",
-      createdAt: "e.createdAt",
-    };
-
-    const orderBy = orderMap[sortBy] || "e.createdAt";
-    const orderDir = sortOrder === "ASC" ? "ASC" : "DESC";
-    const likeSearch = `%${search}%`;
-
-    const whereSql = search
-      ? "WHERE (e.name LIKE :search OR e.email LIKE :search OR e.designation LIKE :search)"
-      : "";
-
-    const [[countRow]] = await sequelize.query(
-      `SELECT COUNT(*) AS total FROM employees e ${whereSql}`,
-      {
-        replacements: { search: likeSearch },
-      },
-    );
-
-    const [rows] = await sequelize.query(
-      `
-        SELECT
-          e.id,
-          e.name,
-          e.email,
-          e.phone,
-          e.departmentId,
-          e.designation,
-          e.salary,
-          e.status,
-          e.joiningDate,
-          e.createdAt,
-          e.updatedAt,
-          d.id AS department_id,
-          d.name AS department_name
-        FROM employees e
-        LEFT JOIN departments d ON d.id = e.departmentId
-        ${whereSql}
-        ORDER BY ${orderBy} ${orderDir}
-        LIMIT :limit OFFSET :offset
-      `,
-      {
-        replacements: {
-          search: likeSearch,
-          limit,
-          offset,
-        },
-      },
-    );
-
-    const data = rows.map((row) => {
-      const fullName = (row.name || "").trim();
-      const parts = fullName.split(/\s+/).filter(Boolean);
-      const firstName = parts[0] || "";
-      const lastName = parts.length > 1 ? parts.slice(1).join(" ") : "";
-
-      return {
-        id: row.id,
-        firstName,
-        lastName,
-        email: row.email,
-        phone: row.phone,
-        departmentId: row.departmentId,
-        designation: row.designation,
-        salary: row.salary,
-        status: row.status,
-        joiningDate: row.joiningDate,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        department: row.department_id
-          ? { id: row.department_id, name: row.department_name }
-          : null,
-      };
-    });
-
-    const total = Number(countRow.total || 0);
-
-    return res.status(StatusCodes.OK).json({
-      success: true,
-      data,
-      meta: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  }
+      total: count,
+      totalPages: Math.ceil(count / limit),
+    },
+  });
 });
 
 export const createEmployee = asyncHandler(async (req, res, next) => {
   const payload = req.body;
-  let transaction;
 
-  try {
-    transaction = await sequelize.transaction();
-
-    const department = await Department.findByPk(payload.departmentId, {
-      transaction,
-    });
-
-    if (!department) {
-      throw new ApiError(StatusCodes.BAD_REQUEST, "Department not found.");
-    }
-
-    const created = await Employee.create(payload, { transaction });
-    await transaction.commit();
-
-    const employee = await Employee.findByPk(created.id, {
-      include: [{ model: Department, as: "department", attributes: ["id", "name"] }],
-    });
-
-    return res.status(StatusCodes.CREATED).json({
-      success: true,
-      data: employee,
-    });
-  } catch (err) {
-    if (transaction) {
-      await transaction.rollback();
-    }
-
-    // Fallback for ems_db schema where employees use numeric id and camelCase columns.
-    const [existing] = await sequelize.query(
-      "SELECT id FROM employees WHERE email = :email LIMIT 1",
-      { replacements: { email: payload.email } },
-    );
-
-    if (existing.length > 0) {
-      return next(new ApiError(StatusCodes.CONFLICT, "Email is already in use."));
-    }
-
-    const [[dep]] = await sequelize.query(
-      "SELECT id, name FROM departments WHERE id = :id LIMIT 1",
-      { replacements: { id: payload.departmentId } },
-    );
-    if (!dep) {
-      return next(new ApiError(StatusCodes.BAD_REQUEST, "Department not found."));
-    }
-
-    const fullName = `${payload.firstName} ${payload.lastName}`.trim();
-    const statusMap = {
-      Active: "active",
-      "On-Leave": "on-leave",
-      Terminated: "terminated",
-    };
-    const fallbackStatus = statusMap[payload.status] || payload.status || "active";
-
-    const [insertResult] = await sequelize.query(
-      `
-        INSERT INTO employees
-          (name, email, phone, departmentId, designation, salary, status, joiningDate, createdAt, updatedAt)
-        VALUES
-          (:name, :email, :phone, :departmentId, :designation, :salary, :status, :joiningDate, NOW(), NOW())
-      `,
-      {
-        replacements: {
-          name: fullName,
-          email: payload.email,
-          phone: payload.phone,
-          departmentId: payload.departmentId,
-          designation: payload.designation,
-          salary: Number(payload.salary),
-          status: fallbackStatus,
-          joiningDate: payload.joiningDate,
-        },
-      },
-    );
-
-    const newId = insertResult?.insertId;
-    const [[row]] = await sequelize.query(
-      `
-        SELECT
-          e.id,
-          e.name,
-          e.email,
-          e.phone,
-          e.departmentId,
-          e.designation,
-          e.salary,
-          e.status,
-          e.joiningDate,
-          e.createdAt,
-          e.updatedAt,
-          d.id AS department_id,
-          d.name AS department_name
-        FROM employees e
-        LEFT JOIN departments d ON d.id = e.departmentId
-        WHERE e.id = :id
-        LIMIT 1
-      `,
-      { replacements: { id: newId } },
-    );
-
-    const parts = String(row?.name || "").trim().split(/\s+/).filter(Boolean);
-
-    return res.status(StatusCodes.CREATED).json({
-      success: true,
-      data: {
-        id: row.id,
-        firstName: parts[0] || "",
-        lastName: parts.length > 1 ? parts.slice(1).join(" ") : "",
-        email: row.email,
-        phone: row.phone,
-        departmentId: row.departmentId,
-        designation: row.designation,
-        salary: row.salary,
-        status: row.status,
-        joiningDate: row.joiningDate,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        department: row.department_id
-          ? { id: row.department_id, name: row.department_name }
-          : null,
-      },
-    });
+  const existing = await Employee.findOne({
+    email: String(payload.email || "").trim().toLowerCase(),
+  });
+  if (existing) {
+    return next(new ApiError(StatusCodes.CONFLICT, "Email is already in use."));
   }
+
+  const department = await Department.findById(payload.departmentId);
+  if (!department) {
+    return next(new ApiError(StatusCodes.BAD_REQUEST, "Department not found."));
+  }
+
+  const employee = await Employee.create({
+    ...payload,
+    email: String(payload.email || "").trim().toLowerCase(),
+  });
+
+  const created = await Employee.findById(employee._id)
+    .populate("departmentId", "name")
+    .lean();
+
+  return res.status(StatusCodes.CREATED).json({
+    success: true,
+    data: mapEmployee(created),
+  });
 });
 
 export const updateEmployee = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const payload = req.body;
-  try {
-    const transaction = await sequelize.transaction();
-    const employee = await Employee.findByPk(id, { transaction });
-    if (!employee) {
-      throw new ApiError(StatusCodes.NOT_FOUND, "Employee not found.");
-    }
 
-    if (payload.departmentId) {
-      const department = await Department.findByPk(payload.departmentId, {
-        transaction,
-      });
-      if (!department) {
-        throw new ApiError(StatusCodes.BAD_REQUEST, "Department not found.");
-      }
-    }
-
-    await employee.update(payload, { transaction });
-    await transaction.commit();
-
-    const refreshed = await Employee.findByPk(id, {
-      include: [
-        { model: Department, as: "department", attributes: ["id", "name"] },
-      ],
-    });
-
-    return res.status(StatusCodes.OK).json({
-      success: true,
-      data: refreshed,
-    });
-  } catch {
-    // Fallback for ems_db schema where employees use numeric id and camelCase columns.
-    const idNum = Number(id);
-    if (!Number.isInteger(idNum) || idNum <= 0) {
-      return next(
-        new ApiError(StatusCodes.BAD_REQUEST, "Invalid employee id."),
-      );
-    }
-
-    const [[existing]] = await sequelize.query(
-      "SELECT id, name, departmentId FROM employees WHERE id = :id LIMIT 1",
-      { replacements: { id: idNum } },
-    );
-
-    if (!existing) {
-      return next(new ApiError(StatusCodes.NOT_FOUND, "Employee not found."));
-    }
-
-    if (payload.departmentId) {
-      const depIdNum = Number(payload.departmentId);
-      const [[dep]] = await sequelize.query(
-        "SELECT id FROM departments WHERE id = :id LIMIT 1",
-        { replacements: { id: depIdNum } },
-      );
-      if (!dep) {
-        return next(
-          new ApiError(StatusCodes.BAD_REQUEST, "Department not found."),
-        );
-      }
-    }
-
-    const fullName = (existing.name || "").trim();
-    const nameParts = fullName.split(/\s+/).filter(Boolean);
-    const currentFirst = nameParts[0] || "";
-    const currentLast =
-      nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
-    const nextFirst = payload.firstName ?? currentFirst;
-    const nextLast = payload.lastName ?? currentLast;
-
-    const updates = [];
-    const replacements = { id: idNum };
-
-    if (payload.firstName !== undefined || payload.lastName !== undefined) {
-      updates.push("name = :name");
-      replacements.name = `${nextFirst} ${nextLast}`.trim();
-    }
-    if (payload.email !== undefined) {
-      updates.push("email = :email");
-      replacements.email = payload.email;
-    }
-    if (payload.phone !== undefined) {
-      updates.push("phone = :phone");
-      replacements.phone = payload.phone;
-    }
-    if (payload.departmentId !== undefined) {
-      updates.push("departmentId = :departmentId");
-      replacements.departmentId = Number(payload.departmentId);
-    }
-    if (payload.designation !== undefined) {
-      updates.push("designation = :designation");
-      replacements.designation = payload.designation;
-    }
-    if (payload.salary !== undefined) {
-      updates.push("salary = :salary");
-      replacements.salary = Number(payload.salary);
-    }
-    if (payload.status !== undefined) {
-      updates.push("status = :status");
-      replacements.status = payload.status;
-    }
-    if (payload.joiningDate !== undefined) {
-      updates.push("joiningDate = :joiningDate");
-      replacements.joiningDate = payload.joiningDate;
-    }
-
-    if (updates.length > 0) {
-      updates.push("updatedAt = NOW()");
-      await sequelize.query(
-        `UPDATE employees SET ${updates.join(", ")} WHERE id = :id`,
-        { replacements },
-      );
-    }
-
-    const [[row]] = await sequelize.query(
-      `
-        SELECT
-          e.id,
-          e.name,
-          e.email,
-          e.phone,
-          e.departmentId,
-          e.designation,
-          e.salary,
-          e.status,
-          e.joiningDate,
-          e.createdAt,
-          e.updatedAt,
-          d.id AS department_id,
-          d.name AS department_name
-        FROM employees e
-        LEFT JOIN departments d ON d.id = e.departmentId
-        WHERE e.id = :id
-        LIMIT 1
-      `,
-      { replacements: { id: idNum } },
-    );
-
-    const refreshedName = (row?.name || "").trim();
-    const refreshedParts = refreshedName.split(/\s+/).filter(Boolean);
-
-    return res.status(StatusCodes.OK).json({
-      success: true,
-      data: {
-        id: row.id,
-        firstName: refreshedParts[0] || "",
-        lastName:
-          refreshedParts.length > 1 ? refreshedParts.slice(1).join(" ") : "",
-        email: row.email,
-        phone: row.phone,
-        departmentId: row.departmentId,
-        designation: row.designation,
-        salary: row.salary,
-        status: row.status,
-        joiningDate: row.joiningDate,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        department: row.department_id
-          ? { id: row.department_id, name: row.department_name }
-          : null,
-      },
-    });
+  const employee = await Employee.findById(id);
+  if (!employee) {
+    return next(new ApiError(StatusCodes.NOT_FOUND, "Employee not found."));
   }
+
+  if (payload.departmentId) {
+    const department = await Department.findById(payload.departmentId);
+    if (!department) {
+      return next(new ApiError(StatusCodes.BAD_REQUEST, "Department not found."));
+    }
+  }
+
+  if (payload.email) {
+    const normalizedEmail = String(payload.email).trim().toLowerCase();
+    const existing = await Employee.findOne({ email: normalizedEmail });
+    if (existing && String(existing._id) !== String(employee._id)) {
+      return next(new ApiError(StatusCodes.CONFLICT, "Email is already in use."));
+    }
+    employee.email = normalizedEmail;
+  }
+
+  const updatableFields = [
+    "firstName",
+    "lastName",
+    "phone",
+    "departmentId",
+    "designation",
+    "salary",
+    "status",
+    "joiningDate",
+  ];
+
+  updatableFields.forEach((field) => {
+    if (payload[field] !== undefined) {
+      employee[field] = payload[field];
+    }
+  });
+
+  await employee.save();
+
+  const refreshed = await Employee.findById(id)
+    .populate("departmentId", "name")
+    .lean();
+
+  return res.status(StatusCodes.OK).json({
+    success: true,
+    data: mapEmployee(refreshed),
+  });
 });
 
 export const deleteEmployee = asyncHandler(async (req, res, next) => {
-  try {
-    const employee = await Employee.findByPk(req.params.id);
-    if (!employee) {
-      return next(new ApiError(StatusCodes.NOT_FOUND, "Employee not found."));
-    }
-    await employee.destroy();
-    return res.status(StatusCodes.OK).json({
-      success: true,
-      message: "Employee deleted.",
-    });
-  } catch {
-    const idNum = Number(req.params.id);
-    if (!Number.isInteger(idNum) || idNum <= 0) {
-      return next(
-        new ApiError(StatusCodes.BAD_REQUEST, "Invalid employee id."),
-      );
-    }
-
-    const [result] = await sequelize.query(
-      "DELETE FROM employees WHERE id = :id",
-      { replacements: { id: idNum } },
-    );
-
-    if (!result?.affectedRows) {
-      return next(new ApiError(StatusCodes.NOT_FOUND, "Employee not found."));
-    }
-
-    return res.status(StatusCodes.OK).json({
-      success: true,
-      message: "Employee deleted.",
-    });
+  const deleted = await Employee.findByIdAndDelete(req.params.id);
+  if (!deleted) {
+    return next(new ApiError(StatusCodes.NOT_FOUND, "Employee not found."));
   }
+
+  return res.status(StatusCodes.OK).json({
+    success: true,
+    message: "Employee deleted.",
+  });
 });

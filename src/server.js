@@ -1,21 +1,18 @@
 import app from "./app.js";
-import { sequelize } from "./models/index.js";
+import {
+  connectDatabase as connectMongoDatabase,
+  disconnectDatabase as disconnectMongoDatabase,
+} from "./config/database.js";
 import { env } from "./config/env.js";
 
 let dbConnected = false;
+const maskedMongoUri = env.mongodbUri.replace(/\/\/([^:]+):([^@]+)@/, "//$1:***@");
 
 const connectDatabase = async () => {
-  await sequelize.authenticate();
+  await connectMongoDatabase();
   dbConnected = true;
   app.locals.dbConnected = true;
   console.log("Database connected successfully");
-
-  if (env.dbSync) {
-    await sequelize.sync({ alter: true });
-    console.log("Database synced (alter=true)");
-  } else {
-    console.log("Database sync skipped (set DB_SYNC=true to enable)");
-  }
 };
 
 const scheduleDbReconnect = () => {
@@ -44,9 +41,7 @@ const startServer = async () => {
     app.locals.dbConnected = false;
 
     console.error("Initial DB connection failed:", error.message);
-    console.error(
-      `Current DB target: ${env.dbHost}:${env.dbPort}/${env.dbName} (ssl=${env.dbSsl})`,
-    );
+    console.error(`Current DB target: ${maskedMongoUri}`);
     console.error(
       "DB reconnect will continue in background. Update .env credentials and restart.",
     );
@@ -83,7 +78,7 @@ const startServer = async () => {
 
   process.on("SIGTERM", async () => {
     try {
-      await sequelize.close();
+      await disconnectMongoDatabase();
     } finally {
       process.exit(1);
     }

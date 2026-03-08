@@ -15,13 +15,18 @@ const cookieOptions = {
 export const register = asyncHandler(async (req, res, next) => {
   const { email, password, role = "employee" } = req.body;
   const normalizedRole = role === "Manager" ? "employee" : role;
+  const normalizedEmail = String(email || "").trim().toLowerCase();
 
-  const existing = await User.findOne({ where: { email } });
+  const existing = await User.findOne({ email: normalizedEmail });
   if (existing) {
     return next(new ApiError(StatusCodes.CONFLICT, "Email is already in use."));
   }
 
-  const user = await User.create({ email, password, role: normalizedRole });
+  const user = await User.create({
+    email: normalizedEmail,
+    password,
+    role: normalizedRole,
+  });
   const token = signToken({ id: user.id, role: user.role });
 
   res.cookie(env.cookieName, token, cookieOptions);
@@ -39,8 +44,9 @@ export const register = asyncHandler(async (req, res, next) => {
 
 export const login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
+  const normalizedEmail = String(email || "").trim().toLowerCase();
 
-  const user = await User.findOne({ where: { email } });
+  const user = await User.findOne({ email: normalizedEmail });
   if (!user || !(await user.comparePassword(password))) {
     return next(new ApiError(StatusCodes.UNAUTHORIZED, "Invalid credentials."));
   }

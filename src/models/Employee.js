@@ -1,63 +1,67 @@
-import { DataTypes, Model } from "sequelize";
-import sequelize from "../config/database.js";
+import mongoose from "mongoose";
 
-class Employee extends Model {}
-
-Employee.init(
+const employeeSchema = new mongoose.Schema(
   {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true
-    },
     firstName: {
-      type: DataTypes.STRING,
-      allowNull: false
+      type: String,
+      required: true,
+      trim: true,
     },
     lastName: {
-      type: DataTypes.STRING,
-      allowNull: false
+      type: String,
+      required: true,
+      trim: true,
     },
     email: {
-      type: DataTypes.STRING,
-      allowNull: false,
+      type: String,
+      required: true,
       unique: true,
-      validate: { isEmail: true }
+      trim: true,
+      lowercase: true,
     },
     phone: {
-      type: DataTypes.STRING,
-      allowNull: false
+      type: String,
+      required: true,
+      trim: true,
     },
     departmentId: {
-      type: DataTypes.UUID,
-      allowNull: false,
-      field: "department_id"
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Department",
+      required: true,
     },
     designation: {
-      type: DataTypes.STRING,
-      allowNull: false
+      type: String,
+      required: true,
+      trim: true,
     },
     salary: {
-      type: DataTypes.DECIMAL(12, 2),
-      allowNull: false
+      type: Number,
+      required: true,
     },
     status: {
-      type: DataTypes.ENUM("Active", "On-Leave", "Terminated"),
-      allowNull: false,
-      defaultValue: "Active"
+      type: String,
+      enum: ["Active", "On-Leave", "Terminated"],
+      default: "Active",
+      required: true,
     },
     joiningDate: {
-      type: DataTypes.DATEONLY,
-      allowNull: false,
-      field: "joining_date"
-    }
+      type: Date,
+      required: true,
+    },
   },
-  {
-    sequelize,
-    modelName: "Employee",
-    tableName: "employees",
-    underscored: true
-  }
+  { timestamps: true },
 );
+
+employeeSchema.set("toJSON", {
+  virtuals: true,
+  transform: (_doc, ret) => {
+    ret.id = ret._id.toString();
+    delete ret._id;
+    delete ret.__v;
+    return ret;
+  },
+});
+
+const Employee = mongoose.model("Employee", employeeSchema);
 
 export default Employee;

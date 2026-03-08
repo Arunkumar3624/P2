@@ -1,6 +1,7 @@
 import { body, param, query } from "express-validator";
 
 const uuidOrInt = (value) =>
+  /^[0-9a-f]{24}$/i.test(String(value)) ||
   /^[0-9]+$/.test(String(value)) ||
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     String(value),
@@ -33,7 +34,7 @@ export const employeeQueryValidator = [
 export const updateEmployeeValidator = [
   param("id")
     .custom(uuidOrInt)
-    .withMessage("Employee id must be a valid UUID or numeric id."),
+    .withMessage("Employee id must be a valid ObjectId, UUID, or numeric id."),
   body("firstName").optional().isString().trim().notEmpty(),
   body("lastName").optional().isString().trim().notEmpty(),
   body("email").optional().isEmail().withMessage("Invalid email."),
@@ -77,5 +78,5 @@ export const createEmployeeValidator = [
 export const employeeIdParamValidator = [
   param("id")
     .custom(uuidOrInt)
-    .withMessage("Employee id must be a valid UUID or numeric id."),
+    .withMessage("Employee id must be a valid ObjectId, UUID, or numeric id."),
 ];

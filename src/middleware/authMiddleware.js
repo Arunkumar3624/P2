@@ -13,9 +13,7 @@ export const protect = async (req, res, next) => {
 
   try {
     const decoded = verifyToken(token);
-    const user = await User.findByPk(decoded.id, {
-      attributes: ["id", "email", "role"]
-    });
+    const user = await User.findById(decoded.id).select("email role");
     if (!user) {
       return next(new ApiError(StatusCodes.UNAUTHORIZED, "Invalid token."));
     }
@@ -36,9 +34,7 @@ export const optionalAuth = async (req, res, next) => {
 
   try {
     const decoded = verifyToken(token);
-    const user = await User.findByPk(decoded.id, {
-      attributes: ["id", "email", "role"]
-    });
+    const user = await User.findById(decoded.id).select("email role");
     req.user = user || null;
     next();
   } catch {

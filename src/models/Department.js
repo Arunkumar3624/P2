@@ -1,32 +1,32 @@
-import { DataTypes, Model } from "sequelize";
-import sequelize from "../config/database.js";
+import mongoose from "mongoose";
 
-class Department extends Model {}
-
-Department.init(
+const departmentSchema = new mongoose.Schema(
   {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true
-    },
     name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      unique: true
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
     },
     managerId: {
-      type: DataTypes.UUID,
-      allowNull: true,
-      field: "manager_id"
-    }
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
-  {
-    sequelize,
-    modelName: "Department",
-    tableName: "departments",
-    underscored: true
-  }
+  { timestamps: true },
 );
+
+departmentSchema.set("toJSON", {
+  virtuals: true,
+  transform: (_doc, ret) => {
+    ret.id = ret._id.toString();
+    delete ret._id;
+    delete ret.__v;
+    return ret;
+  },
+});
+
+const Department = mongoose.model("Department", departmentSchema);
 
 export default Department;

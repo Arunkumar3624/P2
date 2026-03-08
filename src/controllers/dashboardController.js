@@ -1,95 +1,46 @@
-import { fn, col } from "sequelize";
 import { StatusCodes } from "http-status-codes";
 import asyncHandler from "../utils/asyncHandler.js";
-import { Department, Employee, sequelize } from "../models/index.js";
+import { Department, Employee } from "../models/index.js";
 
 export const getDashboardStats = asyncHandler(async (req, res) => {
-  try {
-    const totalHeadcount = await Employee.count();
+  const totalHeadcount = await Employee.countDocuments();
+  const departments = await Department.find().select("name").lean();
+  const grouped = await Employee.aggregate([
+    { $group: { _id: "$departmentId", count: { $sum: 1 } } },
+  ]);
 
-    const deptDistributionRows = await Department.findAll({
-      attributes: ["id", "name", [fn("COUNT", col("employees.id")), "count"]],
-      include: [{ model: Employee, as: "employees", attributes: [] }],
-      group: ["Department.id"],
-      raw: true,
-    });
+  const groupedMap = new Map(grouped.map((row) => [String(row._id), row.count]));
 
-    const deptDistribution = deptDistributionRows.map((row) => ({
-      departmentId: row.id,
-      departmentName: row.name,
-      count: Number(row.count),
-    }));
+  const deptDistribution = departments.map((department) => ({
+    departmentId: String(department._id),
+    departmentName: department.name,
+    count: Number(groupedMap.get(String(department._id)) || 0),
+  }));
 
-    const recentHires = await Employee.findAll({
-      attributes: ["id", "firstName", "lastName", "designation", "joiningDate"],
-      include: [
-        { model: Department, as: "department", attributes: ["id", "name"] },
-      ],
-      order: [["joiningDate", "DESC"]],
-      limit: 5,
-    });
+  const recentRows = await Employee.find()
+    .select("firstName lastName designation joiningDate departmentId")
+    .populate("departmentId", "name")
+    .sort({ joiningDate: -1 })
+    .limit(5)
+    .lean();
 
-    return res.status(StatusCodes.OK).json({
-      success: true,
-      data: {
-        totalHeadcount,
-        deptDistribution,
-        recentHires,
-      },
-    });
-  } catch {
-    // Fallback for ems_db schema where employees/departments use camelCase fields.
-    const [[totalRow]] = await sequelize.query(
-      "SELECT COUNT(*) AS totalHeadcount FROM employees",
-    );
+  const recentHires = recentRows.map((row) => ({
+    id: String(row._id),
+    firstName: row.firstName,
+    lastName: row.lastName,
+    designation: row.designation,
+    joiningDate: row.joiningDate,
+    department: row.departmentId?._id
+      ? { id: String(row.departmentId._id), name: row.departmentId.name }
+      : null,
+  }));
 
-    const [deptDistributionRows] = await sequelize.query(`
-      SELECT d.id, d.name, COUNT(e.id) AS count
-      FROM departments d
-      LEFT JOIN employees e ON e.departmentId = d.id
-      GROUP BY d.id, d.name
-      ORDER BY d.name ASC
-    `);
-
-    const [recentRows] = await sequelize.query(`
-      SELECT e.id, e.name, e.designation, e.joiningDate, d.id AS departmentId, d.name AS departmentName
-      FROM employees e
-      LEFT JOIN departments d ON d.id = e.departmentId
-      ORDER BY e.joiningDate DESC
-      LIMIT 5
-    `);
-
-    const deptDistribution = deptDistributionRows.map((row) => ({
-      departmentId: row.id,
-      departmentName: row.name,
-      count: Number(row.count),
-    }));
-
-    const recentHires = recentRows.map((row) => {
-      const fullName = (row.name || "").trim();
-      const parts = fullName.split(/\s+/).filter(Boolean);
-      const firstName = parts[0] || "";
-      const lastName = parts.length > 1 ? parts.slice(1).join(" ") : "";
-
-      return {
-        id: row.id,
-        firstName,
-        lastName,
-        designation: row.designation,
-        joiningDate: row.joiningDate,
-        department: row.departmentId
-          ? { id: row.departmentId, name: row.departmentName }
-          : null,
-      };
-    });
-
-    return res.status(StatusCodes.OK).json({
-      success: true,
-      data: {
-        totalHeadcount: Number(totalRow.totalHeadcount || 0),
-        deptDistribution,
-        recentHires,
-      },
-    });
-  }
+  return res.status(StatusCodes.OK).json({
+    success: true,
+    data: {
+      totalHeadcount,
+      deptDistribution,
+      recentHires,
+    },
+  });
 });
